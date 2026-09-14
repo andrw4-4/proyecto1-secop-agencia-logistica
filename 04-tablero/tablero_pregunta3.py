@@ -129,3 +129,305 @@ def actualizar_heatmap(_):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+
+
+
+
+
+#############################Pregunta 1 ---#################################
+
+
+
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------------
+# Carga de datos
+# ------------------------------------------------------------------
+
+external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+server = app.server
+
+df = pd.read_csv("base_analitica.csv")
+
+anios_disponibles = sorted(df["anio_firma"].dropna().unique().astype(int))
+modalidades = sorted(df["modalidad_de_contratacion"].dropna().unique())
+
+# ------------------------------------------------------------------
+# Layout
+# ------------------------------------------------------------------
+
+app.layout = html.Div(
+    style={'fontFamily': 'Arial', 'margin': '30px'},
+    children=[
+
+        html.H1(
+            'Dependencia de proveedores — Agencia Logística de las FFMM'
+        ),
+
+        html.P(
+            'Pregunta de negocio: ¿Qué tan dependiente es la Agencia Logística '
+            'de un grupo reducido de proveedores, y en qué modalidades de '
+            'contratación se concentra ese riesgo?'
+        ),
+
+        html.Hr(),
+
+        # Filtros
+        html.Div(
+            style={'display': 'flex', 'gap': '30px'},
+            children=[
+
+                html.Div([
+                    html.Label('Seleccione un año:'),
+                    dcc.Dropdown(
+                        id='filtro-anio-p1',
+                        options=[{'label': 'Todos los años', 'value': 'todos'}] +
+                                [{'label': str(a), 'value': a}
+                                 for a in anios_disponibles],
+                        value='todos',
+                        style={'width': '300px'}
+                    )
+                ]),
+
+                html.Div([
+                    html.Label('Seleccione una modalidad:'),
+                    dcc.Dropdown(
+                        id='filtro-modalidad-p1',
+                        options=[{'label': 'Todas las modalidades', 'value': 'todas'}] +
+                                [{'label': m, 'value': m} for m in modalidades],
+                        value='todas',
+                        style={'width': '400px'}
+                    )
+                ])
+            ]
+        ),
+
+        # Indicadores
+        html.Div(
+            style={
+                'display': 'flex',
+                'gap': '20px',
+                'marginTop': '25px',
+                'flexWrap': 'wrap'
+            },
+            children=[
+
+                html.Div([
+                    html.H4('HHI'),
+                    html.H2(id='kpi-hhi-p1')
+                ], style={
+                    'backgroundColor': '#f4f4f4',
+                    'padding': '15px',
+                    'borderRadius': '8px',
+                    'width': '20%',
+                    'textAlign': 'center'
+                }),
+
+                html.Div([
+                    html.H4('Top 10'),
+                    html.H2(id='kpi-top10-p1')
+                ], style={
+                    'backgroundColor': '#f4f4f4',
+                    'padding': '15px',
+                    'borderRadius': '8px',
+                    'width': '20%',
+                    'textAlign': 'center'
+                }),
+
+                html.Div([
+                    html.H4('Proveedores para 80%'),
+                    html.H2(id='kpi-80-p1')
+                ], style={
+                    'backgroundColor': '#f4f4f4',
+                    'padding': '15px',
+                    'borderRadius': '8px',
+                    'width': '20%',
+                    'textAlign': 'center'
+                }),
+
+                html.Div([
+                    html.H4('Valor contratado'),
+                    html.H2(id='kpi-valor-p1')
+                ], style={
+                    'backgroundColor': '#f4f4f4',
+                    'padding': '15px',
+                    'borderRadius': '8px',
+                    'width': '20%',
+                    'textAlign': 'center'
+                })
+            ]
+        ),
+
+        # Gráficas
+        html.Div(
+            style={
+                'display': 'flex',
+                'flexWrap': 'wrap',
+                'gap': '20px',
+                'marginTop': '25px'
+            },
+            children=[
+                dcc.Graph(id='grafico-acumulado-p1', style={'width': '48%'}),
+                dcc.Graph(id='grafico-hhi-p1', style={'width': '48%'})
+            ]
+        ),
+
+        html.H3('Hallazgo principal'),
+
+        html.Div(
+            id='hallazgo-p1',
+            style={
+                'backgroundColor': '#f4f4f4',
+                'padding': '15px',
+                'borderRadius': '8px'
+            }
+        )
+    ]
+)
+
+# ------------------------------------------------------------------
+# Callback
+# ------------------------------------------------------------------
+
+@app.callback(
+    [
+        Output('kpi-hhi-p1', 'children'),
+        Output('kpi-top10-p1', 'children'),
+        Output('kpi-80-p1', 'children'),
+        Output('kpi-valor-p1', 'children'),
+        Output('grafico-acumulado-p1', 'figure'),
+        Output('grafico-hhi-p1', 'figure'),
+        Output('hallazgo-p1', 'children')
+    ],
+    [
+        Input('filtro-anio-p1', 'value'),
+        Input('filtro-modalidad-p1', 'value')
+    ]
+)
+def actualizar_tablero(anio, modalidad):
+
+    dff = df.copy()
+
+    if anio != 'todos':
+        dff = dff[dff['anio_firma'] == anio]
+
+    if modalidad != 'todas':
+        dff = dff[dff['modalidad_de_contratacion'] == modalidad]
+
+    # Concentración por proveedor
+    proveedores = (
+        dff.groupby('id_proveedor')['valor_del_contrato']
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index(name='valor_total')
+    )
+
+    total = proveedores['valor_total'].sum()
+
+    proveedores['participacion'] = proveedores['valor_total'] / total
+    proveedores['acumulada'] = proveedores['participacion'].cumsum()
+    proveedores['ranking'] = proveedores.index + 1
+
+    hhi = (proveedores['participacion'] ** 2).sum() * 10000
+    top10 = proveedores.head(10)['participacion'].sum() * 100
+    proveedores_80 = (proveedores['acumulada'] < 0.80).sum() + 1
+
+    # Gráfica acumulada
+    fig_acumulada = px.line(
+        proveedores,
+        x='ranking',
+        y=proveedores['acumulada'] * 100,
+        labels={
+            'ranking': 'Número acumulado de proveedores',
+            'y': 'Participación acumulada (%)'
+        },
+        title='Concentración acumulada del valor contratado'
+    )
+
+    fig_acumulada.add_hline(y=80, line_dash='dash', line_color='red')
+    fig_acumulada.add_vline(
+        x=proveedores_80,
+        line_dash='dash',
+        line_color='orange'
+    )
+
+    # HHI por modalidad
+    base_hhi = df if anio == 'todos' else df[df['anio_firma'] == anio]
+
+    pm = (
+        base_hhi.groupby(
+            ['modalidad_de_contratacion', 'id_proveedor']
+        )['valor_del_contrato']
+        .sum()
+        .reset_index()
+    )
+
+    pm['total_modalidad'] = (
+        pm.groupby('modalidad_de_contratacion')['valor_del_contrato']
+        .transform('sum')
+    )
+
+    pm['participacion'] = (
+        pm['valor_del_contrato'] / pm['total_modalidad']
+    )
+
+    hhi_modalidad = (
+        pm.groupby('modalidad_de_contratacion')
+        .agg(
+            hhi=('participacion', lambda x: (x ** 2).sum() * 10000),
+            proveedores=('id_proveedor', 'nunique')
+        )
+        .reset_index()
+    )
+
+    # Evitar modalidades con un único proveedor
+    hhi_modalidad = hhi_modalidad[
+        hhi_modalidad['proveedores'] > 1
+    ].sort_values('hhi')
+
+    fig_hhi = px.bar(
+        hhi_modalidad,
+        x='hhi',
+        y='modalidad_de_contratacion',
+        orientation='h',
+        labels={
+            'hhi': 'Índice HHI',
+            'modalidad_de_contratacion': 'Modalidad'
+        },
+        title='Concentración de proveedores por modalidad'
+    )
+
+    fig_hhi.add_vline(x=1500, line_dash='dash', line_color='orange')
+    fig_hhi.add_vline(x=2500, line_dash='dash', line_color='red')
+
+    valor_total = dff['valor_del_contrato'].sum()
+
+    hallazgo = (
+        f'El HHI es {hhi:.0f}. Los 10 principales proveedores concentran '
+        f'{top10:.1f}% del valor y {proveedores_80} proveedores son '
+        f'necesarios para alcanzar el 80% del valor contratado.'
+    )
+
+    return (
+        f'{hhi:.0f}',
+        f'{top10:.1f}%',
+        proveedores_80,
+        f'${valor_total / 1e12:.2f} billones',
+        fig_acumulada,
+        fig_hhi,
+        hallazgo
+    )
+
+# ------------------------------------------------------------------
+
+if __name__ == '__main__':
+    app.run(debug=True)
