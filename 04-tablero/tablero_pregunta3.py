@@ -427,6 +427,28 @@ def actualizar_tablero(anio, modalidad):
         hallazgo
     )
 
+# Ordenar las modalidades según su HHI
+
+hhi_modalidades = resumen_modalidades.sort_values(
+    "hhi",
+    ascending=True
+)
+
+plt.figure(figsize=(11, 7))
+
+plt.barh(
+    hhi_modalidades["modalidad"],
+    hhi_modalidades["hhi"],
+    color="darkorange"
+)
+
+plt.xlabel("Índice HHI")
+plt.ylabel("Modalidad de contratación")
+plt.title("Concentración de proveedores por modalidad")
+
+plt.tight_layout()
+plt.show()
+
 # ------------------------------------------------------------------
 
 if __name__ == '__main__':
